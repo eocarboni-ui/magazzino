@@ -382,7 +382,11 @@
     if(!readerEl) return;
     if(typeof Html5Qrcode === 'undefined'){ showToast('Libreria scanner non disponibile', 'out'); S.scanning=false; render(); return; }
     S.html5QrCode = new Html5Qrcode('reader');
-    const config = { fps: 10, qrbox: { width: 260, height: 160 } };
+    const config = {
+      fps: 15,
+      qrbox: { width: 280, height: 120 },
+      experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+    };
     S.html5QrCode.start(
       { facingMode: 'environment' },
       config, onScanSuccess, () => {}
