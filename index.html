@@ -385,7 +385,7 @@
     const config = {
       fps: 15,
       qrbox: { width: 280, height: 120 },
-      experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+      experimentalFeatures: { useBarCodeDetectorIfSupported: false }
     };
     S.html5QrCode.start(
       { facingMode: 'environment' },
@@ -403,8 +403,8 @@
 
   function stopScanner(cb){
     if(S.html5QrCode && S.scanning){
-      S.html5QrCode.stop().then(()=>{ S.html5QrCode.clear(); S.scanning = false; if(cb) cb(); })
-      .catch(()=>{ S.scanning = false; if(cb) cb(); });
+      S.html5QrCode.stop().then(()=>{ S.html5QrCode.clear(); S.html5QrCode = null; S.scanning = false; if(cb) cb(); })
+      .catch(()=>{ S.html5QrCode = null; S.scanning = false; if(cb) cb(); });
     } else if(cb) cb();
   }
 
