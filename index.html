@@ -384,11 +384,12 @@
     S.html5QrCode = new Html5Qrcode('reader');
     const config = {
       fps: 12,
-      qrbox: { width: 290, height: 130 },
-      experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+      qrbox: { width: 300, height: 150 },
+      disableFlip: false,
+      experimentalFeatures: { useBarCodeDetectorIfSupported: false }
     };
     S.html5QrCode.start(
-      { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+      { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 }, advanced: [{ focusMode: 'continuous' }] },
       config, onScanSuccess, () => {}
     ).catch((err)=>{
       const name = (err && (err.name || err.message || '')) + '';
