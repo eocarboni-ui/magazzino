@@ -382,14 +382,9 @@
     if(!readerEl) return;
     if(typeof Html5Qrcode === 'undefined'){ showToast('Libreria scanner non disponibile', 'out'); S.scanning=false; render(); return; }
     S.html5QrCode = new Html5Qrcode('reader');
-    const config = {
-      fps: 12,
-      qrbox: { width: 300, height: 150 },
-      disableFlip: false,
-      experimentalFeatures: { useBarCodeDetectorIfSupported: false }
-    };
+    const config = { fps: 10, qrbox: { width: 260, height: 160 } };
     S.html5QrCode.start(
-      { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 }, advanced: [{ focusMode: 'continuous' }] },
+      { facingMode: 'environment' },
       config, onScanSuccess, () => {}
     ).catch((err)=>{
       const name = (err && (err.name || err.message || '')) + '';
