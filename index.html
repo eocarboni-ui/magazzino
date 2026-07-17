@@ -382,10 +382,23 @@
     if(!readerEl) return;
     if(typeof Html5Qrcode === 'undefined'){ showToast('Libreria scanner non disponibile', 'out'); S.scanning=false; render(); return; }
     S.html5QrCode = new Html5Qrcode('reader');
-    const config = { fps: 10, qrbox: { width: 260, height: 160 } };
+    const config = {
+      fps: 12,
+      qrbox: { width: 290, height: 130 },
+      experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+    };
     S.html5QrCode.start(
-      { facingMode: 'environment' }, config, onScanSuccess, () => {}
-    ).catch(()=>{ showToast('Fotocamera non disponibile: usa inserimento manuale', 'out'); S.scanning = false; render(); });
+      { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+      config, onScanSuccess, () => {}
+    ).catch((err)=>{
+      const name = (err && (err.name || err.message || '')) + '';
+      let msg = 'Fotocamera non disponibile: usa inserimento manuale';
+      if(/NotAllowed|Permission/i.test(name)) msg = 'Permesso fotocamera negato. Vai nelle impostazioni del browser per questo sito e abilita la fotocamera, poi ricarica la pagina.';
+      else if(/NotFound|DevicesNotFound/i.test(name)) msg = 'Nessuna fotocamera trovata su questo dispositivo.';
+      else if(/NotReadable|TrackStart/i.test(name)) msg = 'Fotocamera occupata da un\u2019altra app. Chiudila e riprova.';
+      showToast(msg, 'out');
+      S.scanning = false; render();
+    });
   }
 
   function stopScanner(cb){
@@ -629,7 +642,7 @@
         <button class="${S.direction==='OUT'?'active out':''}" data-dir="OUT">Uscita</button>
       </div>
       <div class="card">
-        ${S.scanning ? `<div id="reader"></div><div class="scan-hint">Inquadra il QR code o il codice a barre</div>
+        ${S.scanning ? `<div id="reader"></div><div class="scan-hint">QR: inquadra intero. Barcode: tieni il telefono a 10-15cm, ben illuminato, in orizzontale dentro il riquadro</div>
           <button class="btn ghost" id="stop-scan">Interrompi scanner</button>`
           : `<button class="btn primary ${S.direction==='IN'?'in':'out'}" id="start-scan">Avvia scanner</button>
              <div class="scan-hint">oppure</div>
@@ -792,7 +805,7 @@
       }
       document.querySelectorAll('.dir-toggle button').forEach(b=>{ b.onclick = () => setDirection(b.dataset.dir); });
       const startBtn = document.getElementById('start-scan');
-      if(startBtn) startBtn.onclick = () => { S.scanning = true; render(); setTimeout(startScanner, 50); };
+      if(startBtn) startBtn.onclick = () => { S.scanning = true; render(); startScanner(); };
       const stopBtn = document.getElementById('stop-scan');
       if(stopBtn) stopBtn.onclick = () => stopScanner(render);
       const manualGo = document.getElementById('manual-go');
