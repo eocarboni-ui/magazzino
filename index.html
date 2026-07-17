@@ -1,0 +1,640 @@
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+
+<style>
+  :root{
+    --bg:#12161a;
+    --panel:#1b2126;
+    --panel-alt:#222a31;
+    --line:#323d47;
+    --ink:#edefef;
+    --ink-dim:#8b96a1;
+    --in:#35c97c;
+    --in-dim:#1e3d2e;
+    --out:#ff7a3d;
+    --out-dim:#402417;
+    --warn:#f2c94c;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  #app{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    max-width:520px;
+    margin:0 auto;
+    position:relative;
+  }
+  .mono{font-family:'JetBrains Mono',monospace;}
+  .display{font-family:'Barlow Condensed',sans-serif;font-weight:800;text-transform:uppercase;letter-spacing:0.02em;}
+
+  /* barcode stripe signature element */
+  .stripe{
+    height:14px;
+    width:100%;
+    background-image: repeating-linear-gradient(90deg,
+      var(--line) 0px, var(--line) 2px, transparent 2px, transparent 5px,
+      var(--line) 5px, var(--line) 6px, transparent 6px, transparent 10px,
+      var(--line) 10px, var(--line) 13px, transparent 13px, transparent 16px,
+      var(--line) 16px, var(--line) 17px, transparent 17px, transparent 22px,
+      var(--line) 22px, var(--line) 25px, transparent 25px, transparent 28px);
+    opacity:0.6;
+  }
+  .stripe.accent-in{background-image: repeating-linear-gradient(90deg,
+      var(--in) 0px, var(--in) 2px, transparent 2px, transparent 5px,
+      var(--in) 5px, var(--in) 6px, transparent 6px, transparent 10px,
+      var(--in) 10px, var(--in) 13px, transparent 13px, transparent 16px,
+      var(--in) 16px, var(--in) 17px, transparent 17px, transparent 22px,
+      var(--in) 22px, var(--in) 25px, transparent 25px, transparent 28px);
+    opacity:0.9;}
+  .stripe.accent-out{background-image: repeating-linear-gradient(90deg,
+      var(--out) 0px, var(--out) 2px, transparent 2px, transparent 5px,
+      var(--out) 5px, var(--out) 6px, transparent 6px, transparent 10px,
+      var(--out) 10px, var(--out) 13px, transparent 13px, transparent 16px,
+      var(--out) 16px, var(--out) 17px, transparent 17px, transparent 22px,
+      var(--out) 22px, var(--out) 25px, transparent 25px, transparent 28px);
+    opacity:0.9;}
+
+  .topbar{
+    padding:16px 18px 12px;
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    border-bottom:1px solid var(--line);
+  }
+  .topbar h1{
+    font-size:22px;
+    margin:0;
+    line-height:1;
+  }
+  .topbar .op{
+    font-family:'JetBrains Mono',monospace;
+    font-size:12px;
+    color:var(--ink-dim);
+    text-align:right;
+    cursor:pointer;
+    border:1px solid var(--line);
+    padding:6px 9px;
+    border-radius:8px;
+  }
+  .topbar .op:hover{border-color:var(--ink-dim);}
+
+  main{flex:1;padding:16px 18px 90px;overflow-y:auto;}
+
+  .card{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:16px;
+    margin-bottom:14px;
+  }
+
+  .dir-toggle{
+    display:flex;
+    border-radius:var(--radius);
+    overflow:hidden;
+    border:1px solid var(--line);
+    margin-bottom:14px;
+  }
+  .dir-toggle button{
+    flex:1;
+    padding:14px 0;
+    background:var(--panel);
+    border:none;
+    color:var(--ink-dim);
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:800;
+    font-size:19px;
+    letter-spacing:0.04em;
+    cursor:pointer;
+    text-transform:uppercase;
+    transition:background .15s,color .15s;
+  }
+  .dir-toggle button.active.in{background:var(--in);color:#0a1710;}
+  .dir-toggle button.active.out{background:var(--out);color:#1f0e04;}
+  .dir-toggle button:not(.active):hover{color:var(--ink);}
+
+  .btn{
+    display:block;
+    width:100%;
+    padding:15px 16px;
+    border-radius:var(--radius);
+    border:1px solid var(--line);
+    background:var(--panel-alt);
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+    font-weight:600;
+    font-size:15px;
+    cursor:pointer;
+    text-align:center;
+  }
+  .btn:active{transform:translateY(1px);}
+  .btn.primary.in{background:var(--in);color:#0a1710;border-color:var(--in);}
+  .btn.primary.out{background:var(--out);color:#1f0e04;border-color:var(--out);}
+  .btn.ghost{background:transparent;color:var(--ink-dim);border:1px dashed var(--line);font-weight:500;font-size:13px;padding:10px;}
+  .btn.small{padding:8px 12px;font-size:13px;width:auto;display:inline-block;}
+  .btn:disabled{opacity:0.5;cursor:not-allowed;}
+
+  #reader{border-radius:var(--radius);overflow:hidden;border:1px solid var(--line);margin-bottom:10px;}
+  #reader video{border-radius:var(--radius);}
+
+  .scan-hint{font-size:12px;color:var(--ink-dim);text-align:center;margin:6px 0 14px;}
+
+  label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-dim);margin-bottom:6px;font-weight:600;}
+  input[type=text],input[type=number]{
+    width:100%;
+    background:var(--panel-alt);
+    border:1px solid var(--line);
+    color:var(--ink);
+    padding:11px 12px;
+    border-radius:8px;
+    font-family:'Inter',sans-serif;
+    font-size:15px;
+    margin-bottom:12px;
+  }
+  input:focus{outline:none;border-color:var(--ink-dim);}
+
+  .code-chip{
+    font-family:'JetBrains Mono',monospace;
+    background:var(--panel-alt);
+    border:1px solid var(--line);
+    padding:8px 10px;
+    border-radius:8px;
+    font-size:14px;
+    display:inline-block;
+    margin-bottom:10px;
+    word-break:break-all;
+  }
+
+  .stepper{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
+  .stepper button{
+    width:42px;height:42px;border-radius:8px;border:1px solid var(--line);
+    background:var(--panel-alt);color:var(--ink);font-size:20px;cursor:pointer;
+  }
+  .stepper input{text-align:center;margin:0;width:70px;}
+
+  .badge{
+    display:inline-block;padding:3px 8px;border-radius:5px;font-size:10px;
+    font-weight:700;text-transform:uppercase;letter-spacing:0.04em;
+    font-family:'Barlow Condensed',sans-serif;
+  }
+  .badge.in{background:var(--in-dim);color:var(--in);}
+  .badge.out{background:var(--out-dim);color:var(--out);}
+  .badge.new{background:#3a3316;color:var(--warn);}
+
+  .move-row{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:11px 0;border-bottom:1px solid var(--line);gap:10px;
+  }
+  .move-row:last-child{border-bottom:none;}
+  .move-row .info{flex:1;min-width:0;}
+  .move-row .name{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .move-row .meta{font-size:11px;color:var(--ink-dim);font-family:'JetBrains Mono',monospace;margin-top:2px;}
+  .move-row .qty{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:16px;white-space:nowrap;}
+
+  .tabs{
+    position:fixed;bottom:0;left:50%;transform:translateX(-50%);
+    width:100%;max-width:520px;
+    display:flex;background:var(--panel);border-top:1px solid var(--line);
+  }
+  .tabs button{
+    flex:1;padding:13px 0 10px;background:none;border:none;color:var(--ink-dim);
+    font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;
+    text-transform:uppercase;letter-spacing:0.03em;cursor:pointer;
+  }
+  .tabs button.active{color:var(--ink);border-top:2px solid var(--warn);padding-top:11px;}
+
+  .empty{text-align:center;color:var(--ink-dim);font-size:13px;padding:24px 10px;}
+
+  .toast{
+    position:fixed;top:14px;left:50%;transform:translateX(-50%);
+    background:var(--panel-alt);border:1px solid var(--line);color:var(--ink);
+    padding:10px 16px;border-radius:8px;font-size:13px;z-index:50;
+    box-shadow:0 4px 14px rgba(0,0,0,0.4);
+    display:flex;align-items:center;gap:8px;
+  }
+  .toast.in{border-color:var(--in);}
+  .toast.out{border-color:var(--out);}
+
+  .section-title{font-size:12px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-dim);font-weight:700;margin:2px 0 10px;}
+
+  .stock-row{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--line);}
+  .stock-row:last-child{border-bottom:none;}
+  .stock-row .qty-badge{
+    font-family:'JetBrains Mono',monospace;font-weight:700;font-size:16px;
+    padding:3px 10px;border-radius:6px;background:var(--panel-alt);
+  }
+  .stock-row .qty-badge.zero{color:var(--ink-dim);}
+  .stock-row .qty-badge.low{color:var(--warn);}
+
+  .row2{display:flex;gap:10px;}
+  .row2>div{flex:1;}
+
+  ::-webkit-scrollbar{width:6px;}
+  ::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px;}
+</style>
+
+<div id="app"></div>
+
+<script>
+(function(){
+  const S = {
+    tab: 'scan',
+    direction: 'IN',
+    operator: null,
+    scanning: false,
+    pending: null,      // { code, isNew } once a code has been read
+    catalog: {},         // code -> {name, category}
+    movements: [],        // array of movement objects, newest first
+    toast: null,
+    filterHistory: '',
+    filterStock: '',
+    html5QrCode: null,
+    loaded: false
+  };
+
+  const MOVEMENTS_KEY = 'movements-log';
+  const CATALOG_KEY = 'products-catalog';
+  const OPERATOR_KEY = 'operator-name';
+
+  function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+  function fmtTime(ts){
+    const d = new Date(ts);
+    return d.toLocaleDateString('it-IT') + ' ' + d.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
+  }
+  function showToast(msg, kind){
+    S.toast = {msg, kind};
+    render();
+    setTimeout(()=>{ S.toast = null; render(); }, 2200);
+  }
+
+  async function loadData(){
+    try{
+      const m = await window.storage.get(MOVEMENTS_KEY, true);
+      S.movements = m ? JSON.parse(m.value) : [];
+    }catch(e){ S.movements = []; }
+    try{
+      const c = await window.storage.get(CATALOG_KEY, true);
+      S.catalog = c ? JSON.parse(c.value) : {};
+    }catch(e){ S.catalog = {}; }
+    try{
+      const op = await window.storage.get(OPERATOR_KEY, false);
+      S.operator = op ? op.value : null;
+    }catch(e){ S.operator = null; }
+    S.loaded = true;
+  }
+
+  async function persistMovements(){
+    try{ await window.storage.set(MOVEMENTS_KEY, JSON.stringify(S.movements), true); }
+    catch(e){ showToast('Errore salvataggio movimenti', 'out'); }
+  }
+  async function persistCatalog(){
+    try{ await window.storage.set(CATALOG_KEY, JSON.stringify(S.catalog), true); }
+    catch(e){ showToast('Errore salvataggio catalogo', 'out'); }
+  }
+  async function persistOperator(name){
+    try{ await window.storage.set(OPERATOR_KEY, name, false); }catch(e){}
+  }
+
+  function computeStock(){
+    const map = {};
+    for(const mv of S.movements){
+      if(!map[mv.code]) map[mv.code] = { code:mv.code, name:mv.name, qty:0 };
+      map[mv.code].qty += mv.direction === 'IN' ? mv.qty : -mv.qty;
+      map[mv.code].name = mv.name;
+    }
+    return Object.values(map).sort((a,b)=> a.name.localeCompare(b.name));
+  }
+
+  // ---------- Scanner ----------
+  function startScanner(){
+    const readerEl = document.getElementById('reader');
+    if(!readerEl) return;
+    if(typeof Html5Qrcode === 'undefined'){
+      showToast('Libreria scanner non disponibile', 'out');
+      return;
+    }
+    S.html5QrCode = new Html5Qrcode('reader');
+    const config = { fps: 10, qrbox: { width: 260, height: 160 } };
+    S.html5QrCode.start(
+      { facingMode: 'environment' },
+      config,
+      onScanSuccess,
+      () => {}
+    ).then(()=>{
+      S.scanning = true;
+      render();
+    }).catch(()=>{
+      showToast('Fotocamera non disponibile: usa inserimento manuale', 'out');
+      S.scanning = false;
+      render();
+    });
+  }
+
+  function stopScanner(cb){
+    if(S.html5QrCode && S.scanning){
+      S.html5QrCode.stop().then(()=>{
+        S.html5QrCode.clear();
+        S.scanning = false;
+        if(cb) cb();
+      }).catch(()=>{ S.scanning = false; if(cb) cb(); });
+    } else {
+      if(cb) cb();
+    }
+  }
+
+  function onScanSuccess(decodedText){
+    stopScanner(()=>{
+      handleCode(decodedText.trim());
+    });
+  }
+
+  function handleCode(code){
+    if(!code) return;
+    const known = S.catalog[code];
+    S.pending = { code, isNew: !known, name: known ? known.name : '', category: known ? (known.category||'') : '', qty: 1 };
+    render();
+  }
+
+  // ---------- Actions ----------
+  async function confirmMovement(){
+    const nameInput = document.getElementById('f-name');
+    const catInput = document.getElementById('f-cat');
+    const qtyInput = document.getElementById('f-qty');
+    const destInput = document.getElementById('f-dest');
+    const name = nameInput ? nameInput.value.trim() : S.pending.name;
+    const category = catInput ? catInput.value.trim() : S.pending.category;
+    const qty = qtyInput ? parseInt(qtyInput.value,10) : S.pending.qty;
+    const dest = destInput ? destInput.value.trim() : '';
+
+    if(!name){ showToast('Inserisci il nome del prodotto', 'out'); return; }
+    if(!qty || qty <= 0){ showToast('Quantit\u00e0 non valida', 'out'); return; }
+    if(!S.operator){ showToast('Imposta il tuo nome operatore in alto', 'out'); return; }
+
+    const code = S.pending.code;
+    if(S.pending.isNew || !S.catalog[code] || S.catalog[code].name !== name){
+      S.catalog[code] = { name, category };
+      await persistCatalog();
+    }
+
+    const movement = {
+      id: uid(),
+      code, name,
+      direction: S.direction,
+      qty,
+      operator: S.operator,
+      dest: dest || null,
+      timestamp: Date.now()
+    };
+    S.movements.unshift(movement);
+    await persistMovements();
+
+    S.pending = null;
+    showToast((S.direction === 'IN' ? 'Entrata' : 'Uscita') + ' registrata \u2014 ' + qty + '\u00d7 ' + name, S.direction === 'IN' ? 'in' : 'out');
+    render();
+  }
+
+  function cancelPending(){
+    S.pending = null;
+    render();
+  }
+
+  function setDirection(dir){
+    S.direction = dir;
+    render();
+  }
+
+  function setTab(tab){
+    stopScanner();
+    S.tab = tab;
+    S.pending = null;
+    render();
+  }
+
+  function promptOperator(){
+    const name = prompt('Nome operatore:', S.operator || '');
+    if(name && name.trim()){
+      S.operator = name.trim();
+      persistOperator(S.operator);
+      render();
+    }
+  }
+
+  function exportCSV(){
+    const rows = [['Data/Ora','Direzione','Codice','Prodotto','Quantita','Operatore','Destinazione/Fornitore']];
+    for(const mv of S.movements){
+      rows.push([fmtTime(mv.timestamp), mv.direction, mv.code, mv.name, mv.qty, mv.operator, mv.dest||'']);
+    }
+    const csv = rows.map(r => r.map(v => '"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'movimenti-magazzino.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  // ---------- Render ----------
+  function render(){
+    const app = document.getElementById('app');
+    if(!S.loaded){
+      app.innerHTML = '<div style="padding:40px;text-align:center;color:var(--ink-dim);font-family:Inter,sans-serif;">Caricamento dati magazzino\u2026</div>';
+      return;
+    }
+    app.innerHTML = `
+      ${S.toast ? `<div class="toast ${S.toast.kind}">${S.toast.msg}</div>` : ''}
+      <div class="stripe ${S.direction==='IN'?'accent-in':'accent-out'}"></div>
+      <div class="topbar">
+        <h1 class="display">Controllo Merci</h1>
+        <div class="op" id="op-btn">${S.operator ? S.operator : 'Imposta operatore'}</div>
+      </div>
+      <main id="main"></main>
+      <div class="tabs">
+        <button data-tab="scan" class="${S.tab==='scan'?'active':''}">Scansiona</button>
+        <button data-tab="history" class="${S.tab==='history'?'active':''}">Storico</button>
+        <button data-tab="stock" class="${S.tab==='stock'?'active':''}">Giacenze</button>
+      </div>
+    `;
+    document.getElementById('op-btn').onclick = promptOperator;
+    document.querySelectorAll('.tabs button').forEach(b=>{
+      b.onclick = () => setTab(b.dataset.tab);
+    });
+    renderMain();
+  }
+
+  function renderMain(){
+    const main = document.getElementById('main');
+    if(S.tab === 'scan') main.innerHTML = scanTabHTML();
+    else if(S.tab === 'history') main.innerHTML = historyTabHTML();
+    else main.innerHTML = stockTabHTML();
+    attachMainHandlers();
+  }
+
+  function scanTabHTML(){
+    if(S.pending){
+      const p = S.pending;
+      return `
+        <div class="card">
+          <span class="badge ${p.isNew ? 'new' : (S.direction==='IN'?'in':'out')}">${p.isNew ? 'Nuovo codice' : 'Prodotto noto'}</span>
+          <div class="code-chip mono">${p.code}</div>
+          <label>Nome prodotto</label>
+          <input type="text" id="f-name" value="${escapeAttr(p.name)}" placeholder="Es. Cavo RS485 5m">
+          <label>Categoria (opzionale)</label>
+          <input type="text" id="f-cat" value="${escapeAttr(p.category)}" placeholder="Es. Cavi / Elettrico">
+          <label>Quantit\u00e0</label>
+          <div class="stepper">
+            <button id="qty-minus">\u2212</button>
+            <input type="number" id="f-qty" value="${p.qty}" min="1">
+            <button id="qty-plus">+</button>
+          </div>
+          <label>${S.direction==='IN' ? 'Fornitore / Provenienza' : 'Destinazione / Cliente'} (opzionale)</label>
+          <input type="text" id="f-dest" placeholder="${S.direction==='IN' ? 'Es. Fornitore SpA' : 'Es. Cantiere Noviglio'}">
+          <button class="btn primary ${S.direction==='IN'?'in':'out'}" id="confirm-btn">Conferma ${S.direction==='IN'?'entrata':'uscita'}</button>
+          <div style="height:8px"></div>
+          <button class="btn ghost" id="cancel-btn">Annulla</button>
+        </div>
+      `;
+    }
+    return `
+      <div class="dir-toggle">
+        <button class="${S.direction==='IN'?'active in':''}" data-dir="IN">\u2193 Entrata</button>
+        <button class="${S.direction==='OUT'?'active out':''}" data-dir="OUT">\u2191 Uscita</button>
+      </div>
+      <div class="card">
+        ${S.scanning ? `<div id="reader"></div><div class="scan-hint">Inquadra il QR code o il codice a barre</div>
+          <button class="btn ghost" id="stop-scan">Interrompi scanner</button>`
+          : `<button class="btn primary ${S.direction==='IN'?'in':'out'}" id="start-scan">\ud83d\udcf7 Avvia scanner</button>
+             <div class="scan-hint">oppure</div>
+             <input type="text" id="manual-code" placeholder="Inserisci codice manualmente">
+             <button class="btn ghost" id="manual-go">Cerca / registra codice</button>`}
+      </div>
+      ${recentMiniList()}
+    `;
+  }
+
+  function recentMiniList(){
+    const recent = S.movements.slice(0,4);
+    if(!recent.length) return '';
+    return `
+      <div class="section-title">Ultimi movimenti</div>
+      <div class="card">
+        ${recent.map(mv => moveRowHTML(mv)).join('')}
+      </div>
+    `;
+  }
+
+  function moveRowHTML(mv){
+    return `
+      <div class="move-row">
+        <div class="info">
+          <div class="name">${escapeHTML(mv.name)}</div>
+          <div class="meta">${mv.code} \u00b7 ${fmtTime(mv.timestamp)} \u00b7 ${escapeHTML(mv.operator)}${mv.dest ? ' \u00b7 '+escapeHTML(mv.dest) : ''}</div>
+        </div>
+        <div>
+          <span class="badge ${mv.direction==='IN'?'in':'out'}">${mv.direction==='IN'?'Entrata':'Uscita'}</span><br>
+          <span class="qty">${mv.direction==='IN'?'+':'\u2212'}${mv.qty}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  function historyTabHTML(){
+    return `
+      <div class="card">
+        <input type="text" id="hist-filter" placeholder="Cerca per codice, prodotto, operatore\u2026" value="${escapeAttr(S.filterHistory)}">
+        <button class="btn small" id="export-csv">Esporta CSV</button>
+      </div>
+      <div class="card" id="hist-list"></div>
+    `;
+  }
+
+  function updateHistoryList(){
+    const el = document.getElementById('hist-list');
+    if(!el) return;
+    const f = S.filterHistory.toLowerCase();
+    const list = S.movements.filter(mv =>
+      !f || mv.code.toLowerCase().includes(f) || mv.name.toLowerCase().includes(f) ||
+      mv.operator.toLowerCase().includes(f) || (mv.dest||'').toLowerCase().includes(f)
+    );
+    el.innerHTML = list.length ? list.map(moveRowHTML).join('') : `<div class="empty">Nessun movimento trovato</div>`;
+  }
+
+  function stockTabHTML(){
+    return `
+      <div class="card">
+        <input type="text" id="stock-filter" placeholder="Cerca prodotto o codice\u2026" value="${escapeAttr(S.filterStock)}">
+      </div>
+      <div class="card" id="stock-list"></div>
+    `;
+  }
+
+  function updateStockList(){
+    const el = document.getElementById('stock-list');
+    if(!el) return;
+    const f = S.filterStock.toLowerCase();
+    const stock = computeStock().filter(s => !f || s.code.toLowerCase().includes(f) || s.name.toLowerCase().includes(f));
+    el.innerHTML = stock.length ? stock.map(s => `
+      <div class="stock-row">
+        <div class="info">
+          <div class="name">${escapeHTML(s.name)}</div>
+          <div class="meta mono" style="font-size:11px;color:var(--ink-dim);">${s.code}</div>
+        </div>
+        <div class="qty-badge ${s.qty<=0?'zero':(s.qty<5?'low':'')}">${s.qty}</div>
+      </div>
+    `).join('') : `<div class="empty">Nessun prodotto ancora registrato</div>`;
+  }
+
+  function attachMainHandlers(){
+    if(S.tab === 'scan'){
+      if(S.pending){
+        document.getElementById('confirm-btn').onclick = confirmMovement;
+        document.getElementById('cancel-btn').onclick = cancelPending;
+        document.getElementById('qty-minus').onclick = () => {
+          const el = document.getElementById('f-qty');
+          el.value = Math.max(1, (parseInt(el.value,10)||1) - 1);
+        };
+        document.getElementById('qty-plus').onclick = () => {
+          const el = document.getElementById('f-qty');
+          el.value = (parseInt(el.value,10)||1) + 1;
+        };
+        return;
+      }
+      document.querySelectorAll('.dir-toggle button').forEach(b=>{
+        b.onclick = () => setDirection(b.dataset.dir);
+      });
+      const startBtn = document.getElementById('start-scan');
+      if(startBtn) startBtn.onclick = () => { render(); setTimeout(startScanner, 30); };
+      const stopBtn = document.getElementById('stop-scan');
+      if(stopBtn) stopBtn.onclick = () => stopScanner(render);
+      const manualGo = document.getElementById('manual-go');
+      if(manualGo) manualGo.onclick = () => {
+        const val = document.getElementById('manual-code').value.trim();
+        if(val) handleCode(val);
+      };
+    } else if(S.tab === 'history'){
+      updateHistoryList();
+      document.getElementById('hist-filter').oninput = (e) => { S.filterHistory = e.target.value; updateHistoryList(); };
+      document.getElementById('export-csv').onclick = exportCSV;
+    } else if(S.tab === 'stock'){
+      updateStockList();
+      document.getElementById('stock-filter').oninput = (e) => { S.filterStock = e.target.value; updateStockList(); };
+    }
+  }
+
+  function escapeHTML(s){
+    return String(s==null?'':s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+  function escapeAttr(s){ return escapeHTML(s); }
+
+  // ---------- Init ----------
+  (async function init(){
+    render();
+    await loadData();
+    render();
+  })();
+})();
+</script>
