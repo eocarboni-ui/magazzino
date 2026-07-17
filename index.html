@@ -1,3 +1,10 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#006eb6">
+<title>Controllo Merci — Magazzino</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -5,28 +12,33 @@
 
 <style>
   :root{
-    --bg:#12161a;
-    --panel:#1b2126;
-    --panel-alt:#222a31;
-    --line:#323d47;
-    --ink:#edefef;
-    --ink-dim:#8b96a1;
-    --in:#35c97c;
-    --in-dim:#1e3d2e;
-    --out:#ff7a3d;
-    --out-dim:#402417;
-    --warn:#f2c94c;
-    --blue:#7fb3ff;
-    --blue-dim:#1f2a38;
+    --bg:#f6f8fa;
+    --panel:#ffffff;
+    --panel-alt:#eef2f6;
+    --line:#dbe3ea;
+    --ink:#101c26;
+    --ink-dim:#5c6b78;
+    --brand:#006eb6;
+    --brand-dark:#00436e;
+    --brand-light:#e5f2fa;
+    --in:#1f8a5a;
+    --in-dim:#e5f6ec;
+    --out:#c1541f;
+    --out-dim:#faece2;
+    --warn:#b45309;
+    --warn-dim:#fdf1e0;
+    --blue:#006eb6;
+    --blue-dim:#e5f2fa;
     --radius:10px;
   }
   *{box-sizing:border-box;}
-  html,body{margin:0;padding:0;}
+  html,body{margin:0;padding:0;background:var(--bg);}
+  body{overscroll-behavior-y:none;}
   #app{
     background:var(--bg);
     color:var(--ink);
     font-family:'Inter',sans-serif;
-    min-height:100vh;
+    min-height:100dvh;
     display:flex;
     flex-direction:column;
     max-width:520px;
@@ -73,11 +85,11 @@
   }
   .topbar .op:hover{border-color:var(--ink-dim);}
 
-  main{flex:1;padding:16px 18px 90px;overflow-y:auto;}
+  main{flex:1;padding:16px 18px calc(90px + env(safe-area-inset-bottom));overflow-y:auto;}
 
   .card{
     background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
-    padding:16px;margin-bottom:14px;
+    padding:16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(16,28,38,0.04);
   }
 
   .dir-toggle{
@@ -88,8 +100,8 @@
     font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:19px;letter-spacing:0.04em;
     cursor:pointer;text-transform:uppercase;transition:background .15s,color .15s;
   }
-  .dir-toggle button.active.in{background:var(--in);color:#0a1710;}
-  .dir-toggle button.active.out{background:var(--out);color:#1f0e04;}
+  .dir-toggle button.active.in{background:var(--in);color:#ffffff;}
+  .dir-toggle button.active.out{background:var(--out);color:#ffffff;}
   .dir-toggle button:not(.active):hover{color:var(--ink);}
 
   .btn{
@@ -98,14 +110,15 @@
     cursor:pointer;text-align:center;
   }
   .btn:active{transform:translateY(1px);}
-  .btn.primary.in{background:var(--in);color:#0a1710;border-color:var(--in);}
-  .btn.primary.out{background:var(--out);color:#1f0e04;border-color:var(--out);}
+  .btn.primary.in{background:var(--in);color:#ffffff;border-color:var(--in);}
+  .btn.primary.out{background:var(--out);color:#ffffff;border-color:var(--out);}
   .btn.ghost{background:transparent;color:var(--ink-dim);border:1px dashed var(--line);font-weight:500;font-size:13px;padding:10px;}
   .btn.small{padding:8px 12px;font-size:13px;width:auto;display:inline-block;}
   .btn:disabled{opacity:0.5;cursor:not-allowed;}
 
-  #reader{border-radius:var(--radius);overflow:hidden;border:1px solid var(--line);margin-bottom:10px;}
-  #reader video{border-radius:var(--radius);}
+  #reader{border-radius:var(--radius);overflow:hidden;border:1px solid var(--line);margin-bottom:10px;width:100%!important;}
+  #reader video{border-radius:var(--radius);width:100%!important;height:auto!important;object-fit:cover;}
+  #reader img{display:none!important;}
 
   .scan-hint{font-size:12px;color:var(--ink-dim);text-align:center;margin:6px 0 14px;}
 
@@ -134,8 +147,8 @@
   }
   .badge.in{background:var(--in-dim);color:var(--in);}
   .badge.out{background:var(--out-dim);color:var(--out);}
-  .badge.new{background:#3a3316;color:var(--warn);}
-  .badge.cat{background:var(--blue-dim);color:var(--blue);margin-left:6px;}
+  .badge.new{background:var(--warn-dim);color:var(--warn);}
+  .badge.cat{background:var(--brand-light);color:var(--brand);margin-left:6px;}
 
   .move-row{
     display:flex;justify-content:space-between;align-items:center;
@@ -150,21 +163,22 @@
   .tabs{
     position:fixed;bottom:0;left:50%;transform:translateX(-50%);
     width:100%;max-width:520px;display:flex;background:var(--panel);border-top:1px solid var(--line);
+    padding-bottom:env(safe-area-inset-bottom);
   }
   .tabs button{
     flex:1;padding:13px 0 10px;background:none;border:none;color:var(--ink-dim);
     font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;
     text-transform:uppercase;letter-spacing:0.03em;cursor:pointer;
   }
-  .tabs button.active{color:var(--ink);border-top:2px solid var(--warn);padding-top:11px;}
+  .tabs button.active{color:var(--ink);border-top:2px solid var(--brand);padding-top:11px;}
 
   .empty{text-align:center;color:var(--ink-dim);font-size:13px;padding:24px 10px;}
 
   .toast{
     position:fixed;top:14px;left:50%;transform:translateX(-50%);
-    background:var(--panel-alt);border:1px solid var(--line);color:var(--ink);
+    background:var(--panel);border:1px solid var(--line);color:var(--ink);
     padding:10px 16px;border-radius:8px;font-size:13px;z-index:50;
-    box-shadow:0 4px 14px rgba(0,0,0,0.4);display:flex;align-items:center;gap:8px;max-width:88%;
+    box-shadow:0 8px 24px rgba(16,28,38,0.12);display:flex;align-items:center;gap:8px;max-width:88%;
   }
   .toast.in{border-color:var(--in);}
   .toast.out{border-color:var(--out);}
@@ -193,7 +207,9 @@
   ::-webkit-scrollbar{width:6px;}
   ::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px;}
 </style>
-
+</head>
+<body>
+<div id="toast-slot"></div>
 <div id="app"></div>
 
 <script>
@@ -281,9 +297,11 @@
     return s + ' ' + (unit || 'pz');
   }
   function showToast(msg, kind){
-    S.toast = {msg, kind};
-    render();
-    setTimeout(()=>{ S.toast = null; render(); }, 2400);
+    const slot = document.getElementById('toast-slot');
+    if(!slot) return;
+    slot.innerHTML = `<div class="toast ${kind}">${escapeHTML(msg)}</div>`;
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(()=>{ slot.innerHTML = ''; }, 2400);
   }
 
   let movementsReady = false, catalogReady = false, categoriesReady = false, seedAttempted = false;
@@ -362,13 +380,12 @@
   function startScanner(){
     const readerEl = document.getElementById('reader');
     if(!readerEl) return;
-    if(typeof Html5Qrcode === 'undefined'){ showToast('Libreria scanner non disponibile', 'out'); return; }
+    if(typeof Html5Qrcode === 'undefined'){ showToast('Libreria scanner non disponibile', 'out'); S.scanning=false; render(); return; }
     S.html5QrCode = new Html5Qrcode('reader');
     const config = { fps: 10, qrbox: { width: 260, height: 160 } };
     S.html5QrCode.start(
       { facingMode: 'environment' }, config, onScanSuccess, () => {}
-    ).then(()=>{ S.scanning = true; render(); })
-    .catch(()=>{ showToast('Fotocamera non disponibile: usa inserimento manuale', 'out'); S.scanning = false; render(); });
+    ).catch(()=>{ showToast('Fotocamera non disponibile: usa inserimento manuale', 'out'); S.scanning = false; render(); });
   }
 
   function stopScanner(cb){
@@ -514,7 +531,6 @@
       return;
     }
     app.innerHTML = `
-      ${S.toast ? `<div class="toast ${S.toast.kind}">${S.toast.msg}</div>` : ''}
       <div class="stripe ${S.direction==='IN'?'accent-in':'accent-out'}"></div>
       <div class="topbar">
         <h1 class="display">Controllo Merci</h1>
@@ -776,7 +792,7 @@
       }
       document.querySelectorAll('.dir-toggle button').forEach(b=>{ b.onclick = () => setDirection(b.dataset.dir); });
       const startBtn = document.getElementById('start-scan');
-      if(startBtn) startBtn.onclick = () => { render(); setTimeout(startScanner, 30); };
+      if(startBtn) startBtn.onclick = () => { S.scanning = true; render(); setTimeout(startScanner, 50); };
       const stopBtn = document.getElementById('stop-scan');
       if(stopBtn) stopBtn.onclick = () => stopScanner(render);
       const manualGo = document.getElementById('manual-go');
@@ -815,3 +831,5 @@
   })();
 })();
 </script>
+</body>
+</html>
