@@ -7,8 +7,11 @@
 <title>Controllo Merci — Magazzino</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.5.4/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
 
 <style>
   :root{
@@ -21,12 +24,12 @@
     --brand:#006eb6;
     --brand-dark:#00436e;
     --brand-light:#e5f2fa;
-    --in:#1f8a5a;
-    --in-dim:#e5f6ec;
-    --out:#c1541f;
-    --out-dim:#faece2;
-    --warn:#b45309;
-    --warn-dim:#fdf1e0;
+    --in:#006eb6;
+    --in-dim:#e5f2fa;
+    --out:#00436e;
+    --out-dim:#e2eaf0;
+    --warn:#00436e;
+    --warn-dim:#e5f2fa;
     --blue:#006eb6;
     --blue-dim:#e5f2fa;
     --radius:10px;
@@ -79,6 +82,8 @@
     border-bottom:1px solid var(--line);
   }
   .topbar h1{font-size:22px;margin:0;line-height:1;}
+  .topbar-brand{display:flex;align-items:center;gap:10px;}
+  .brand-logo{height:26px;width:auto;display:block;}
   .topbar .op{
     font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink-dim);
     text-align:right;cursor:pointer;border:1px solid var(--line);padding:6px 9px;border-radius:8px;
@@ -204,6 +209,18 @@
     background:var(--panel-alt);color:var(--out);cursor:pointer;font-size:18px;margin-top:0;
   }
 
+  input[type=file]{
+    width:100%;background:var(--panel-alt);border:1px dashed var(--line);border-radius:8px;
+    padding:10px 12px;font-size:12px;color:var(--ink-dim);margin-bottom:8px;
+  }
+  .photo-preview{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;}
+  .photo-thumb{position:relative;width:64px;height:64px;border-radius:8px;overflow:hidden;border:1px solid var(--line);flex-shrink:0;}
+  .photo-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+  .photo-thumb .photo-rm{
+    position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;
+    background:rgba(16,28,38,0.75);color:#fff;border:none;font-size:13px;line-height:1;cursor:pointer;padding:0;
+  }
+
   ::-webkit-scrollbar{width:6px;}
   ::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px;}
 </style>
@@ -224,6 +241,7 @@
   };
   firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
+  const storage = firebase.storage();
 
   const COMMON_UNITS = ['pz','m','kg','l','conf.','bobina','kit','coppia','set'];
 
@@ -377,6 +395,118 @@
     }).sort((a,b) => a.name.localeCompare(b.name));
   }
 
+  function triggerImport(){
+    const inp = document.getElementById('csv-file-input');
+    if(inp) inp.click();
+  }
+
+  function handleCSVFile(file){
+    if(!file || typeof Papa === 'undefined'){ showToast('Libreria CSV non disponibile', 'out'); return; }
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => { processImportRows(results.data || []); },
+      error: () => showToast('Errore nella lettura del file CSV', 'out')
+    });
+  }
+
+  async function processImportRows(rows){
+    if(!rows.length){ showToast('File CSV vuoto o non leggibile', 'out'); return; }
+    showToast('Importazione in corso\u2026', 'in');
+
+    const norm = (row, keys) => {
+      for(const k of keys){ if(row[k] != null && String(row[k]).trim() !== '') return String(row[k]).trim(); }
+      return '';
+    };
+
+    const categoryUpdates = {};
+    const catalogRows = [];
+    let skipped = 0;
+
+    rows.forEach(row=>{
+      const code = norm(row, ['codice','Codice','CODICE']);
+      if(!code){ skipped++; return; }
+      const name = norm(row, ['nome','Nome','NOME']) || code;
+      const categoryName = norm(row, ['categoria','Categoria','CATEGORIA']) || 'Altro';
+      const categoryKey = slug(categoryName);
+      const existingCat = S.categories[categoryKey];
+      const unit = norm(row, ['unita','unit\u00e0','Unita','Unit\u00e0']) || (existingCat ? existingCat.unit : 'pz');
+      const attrsRaw = norm(row, ['attributi','Attributi']);
+      const giacenzaIniziale = parseFloat(norm(row, ['giacenza_iniziale','giacenzaIniziale','scorta_iniziale','Giacenza_iniziale']));
+      const attrs = {};
+      if(attrsRaw){
+        attrsRaw.split(';').forEach(pair=>{
+          const idx = pair.indexOf(':');
+          if(idx > -1){
+            const k = slug(pair.slice(0, idx).trim());
+            const v = pair.slice(idx + 1).trim();
+            if(k && v) attrs[k] = v;
+          }
+        });
+      }
+
+      catalogRows.push({ code, name, categoryKey, categoryName, unit, attrs, giacenzaIniziale });
+
+      if(!categoryUpdates[categoryKey]){
+        const fieldsMap = {};
+        if(existingCat && existingCat.fields){
+          existingCat.fields.forEach(f=>{ fieldsMap[f.key] = { label: f.label, options: new Set(f.options || []) }; });
+        }
+        categoryUpdates[categoryKey] = { name: categoryName, unit: existingCat ? existingCat.unit : unit, fieldsMap };
+      }
+      Object.keys(attrs).forEach(k=>{
+        const cu = categoryUpdates[categoryKey];
+        if(!cu.fieldsMap[k]) cu.fieldsMap[k] = { label: k, options: new Set() };
+        cu.fieldsMap[k].options.add(attrs[k]);
+      });
+    });
+
+    const catKeys = Object.keys(categoryUpdates);
+    for(const key of catKeys){
+      const cu = categoryUpdates[key];
+      const fields = Object.keys(cu.fieldsMap).map(k => ({
+        key: k, label: cu.fieldsMap[k].label, options: Array.from(cu.fieldsMap[k].options)
+      }));
+      try{ await db.collection('categories').doc(key).set({ name: cu.name, unit: cu.unit || 'pz', fields }, { merge:true }); }
+      catch(e){}
+    }
+
+    let written = 0, failed = 0;
+    for(let i = 0; i < catalogRows.length; i += 400){
+      const chunk = catalogRows.slice(i, i + 400);
+      const batch = db.batch();
+      chunk.forEach(r=>{
+        const ref = db.collection('catalog').doc(r.code);
+        batch.set(ref, { name: r.name, categoryKey: r.categoryKey, categoryName: r.categoryName, unit: r.unit, attributes: r.attrs });
+      });
+      try{ await batch.commit(); written += chunk.length; }
+      catch(e){ failed += chunk.length; }
+    }
+
+    const stockRows = catalogRows.filter(r => r.giacenzaIniziale && r.giacenzaIniziale > 0);
+    let stockWritten = 0;
+    for(let i = 0; i < stockRows.length; i += 400){
+      const chunk = stockRows.slice(i, i + 400);
+      const batch = db.batch();
+      chunk.forEach(r=>{
+        const ref = db.collection('movements').doc();
+        batch.set(ref, {
+          code: r.code, name: r.name, categoryKey: r.categoryKey, categoryName: r.categoryName,
+          unit: r.unit, attributes: r.attrs, direction: 'IN', qty: r.giacenzaIniziale,
+          operator: S.operator || 'Import catalogo', dest: 'Giacenza iniziale da importazione', timestamp: Date.now()
+        });
+      });
+      try{ await batch.commit(); stockWritten += chunk.length; }
+      catch(e){}
+    }
+
+    let msg = `Importati ${written} prodotti in ${catKeys.length} categorie`;
+    if(stockWritten) msg += `, giacenza iniziale su ${stockWritten}`;
+    if(skipped) msg += ` \u2014 ${skipped} righe saltate (codice mancante)`;
+    if(failed) msg += ` \u2014 ${failed} non salvati (errore)`;
+    showToast(msg, failed ? 'out' : 'in');
+  }
+
   function startScanner(){
     const readerEl = document.getElementById('reader');
     if(!readerEl) return;
@@ -421,7 +551,7 @@
         fieldsTemplate: cat ? cat.fields : [],
         name: product.name, unit: product.unit || 'pz',
         attrValues: Object.assign({}, product.attributes||{}),
-        qty: 1
+        qty: 1, ddtFiles: [], materialFiles: []
       };
     } else {
       S.pending = { code, isNew:true, step:'category', categoryInput:'' };
@@ -451,7 +581,57 @@
     S.pending.name = '';
     S.pending.qty = 1;
     S.pending.attrValues = {};
+    S.pending.ddtFiles = [];
+    S.pending.materialFiles = [];
     render();
+  }
+
+  function renderPhotoPreview(containerId, files){
+    const el = document.getElementById(containerId);
+    if(!el) return;
+    el.innerHTML = files.map((f,i) => `
+      <div class="photo-thumb">
+        <img src="${URL.createObjectURL(f)}">
+        <button type="button" class="photo-rm" data-i="${i}">\u00d7</button>
+      </div>
+    `).join('');
+    el.querySelectorAll('.photo-rm').forEach(btn=>{
+      btn.onclick = () => {
+        const idx = parseInt(btn.dataset.i, 10);
+        files.splice(idx, 1);
+        renderPhotoPreview(containerId, files);
+      };
+    });
+  }
+
+  // ============================================================
+  // Le foto DDT/materiale sono al momento SOLO dimostrative: i campi
+  // funzionano (selezione, anteprima, rimozione) ma i file non vengono
+  // caricati da nessuna parte -- si registra solo il nome del file.
+  // Quando attiverai Firebase Storage (Blaze + bucket + regole + CORS),
+  // metti questo flag a true per abilitare il caricamento reale.
+  // ============================================================
+  const PHOTOS_STORAGE_ENABLED = false;
+
+  async function uploadPhotoSet(files, kind, name, dest){
+    if(!files || !files.length) return [];
+    if(!PHOTOS_STORAGE_ENABLED){
+      // Modalita' dimostrativa: nessuna chiamata a Firebase Storage,
+      // si registra solo il nome del file scelto.
+      return files.map(f => f.name);
+    }
+    const supplierFolder = slug(dest || 'senza-fornitore');
+    const productFolder = slug(name) + '_' + new Date().toISOString().slice(0,10);
+    const paths = [];
+    for(const file of files){
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const path = `${kind}/${supplierFolder}/${productFolder}/${Date.now()}_${safeName}`;
+      try{
+        await storage.ref().child(path).put(file);
+        paths.push(path);
+      }catch(e){ /* skip this file, continue with the rest */ }
+    }
+    return paths;
   }
 
   async function confirmMovement(){
@@ -500,16 +680,20 @@
       }catch(e){}
     }
 
+    const ddtPhotoPaths = await uploadPhotoSet(p.ddtFiles, 'ddt-photos', name, dest);
+    const materialPhotoPaths = await uploadPhotoSet(p.materialFiles, 'material-photos', name, dest);
+
     try{
       await db.collection('catalog').doc(p.code).set({ name, categoryKey, categoryName, unit, attributes: attrs });
       await db.collection('movements').add({
         code: p.code, name, categoryKey, categoryName, unit, attributes: attrs,
-        direction: S.direction, qty, operator: S.operator, dest: dest || null, timestamp: Date.now()
+        direction: S.direction, qty, operator: S.operator, dest: dest || null, timestamp: Date.now(),
+        ddtPhotoPaths, materialPhotoPaths
       });
     }catch(e){ showToast('Errore salvataggio movimento', 'out'); return; }
 
     S.pending = null;
-    showToast((S.direction==='IN'?'Entrata':'Uscita') + ' registrata - ' + fmtQty(qty,unit) + ' ' + name, S.direction==='IN'?'in':'out');
+    showToast((S.direction==='IN'?'↓ Entrata':'↑ Uscita') + ' registrata - ' + fmtQty(qty,unit) + ' ' + name, S.direction==='IN'?'in':'out');
     render();
   }
 
@@ -546,7 +730,10 @@
     app.innerHTML = `
       <div class="stripe ${S.direction==='IN'?'accent-in':'accent-out'}"></div>
       <div class="topbar">
-        <h1 class="display">Controllo Merci</h1>
+        <div class="topbar-brand">
+          <img src="logo-engie.png" alt="ENGIE" class="brand-logo" onerror="this.style.display='none'">
+          <h1 class="display">Controllo Merci</h1>
+        </div>
         <div class="op" id="op-btn">${S.operator ? escapeHTML(S.operator) : 'Imposta operatore'}</div>
       </div>
       <main id="main"></main>
@@ -630,7 +817,15 @@
           <label>${S.direction==='IN' ? 'Fornitore / Provenienza' : 'Destinazione / Cliente'} (opzionale)</label>
           <input type="text" id="f-dest" placeholder="${S.direction==='IN' ? 'Es. Fornitore SpA' : 'Es. Cantiere Noviglio'}">
 
-          <button class="btn primary ${S.direction==='IN'?'in':'out'}" id="confirm-btn">Conferma ${S.direction==='IN'?'entrata':'uscita'}</button>
+          <label>Foto DDT (una o pi\u00f9)</label>
+          <input type="file" id="f-ddt-photos" accept="image/*" capture="environment" multiple>
+          <div id="ddt-photos-preview" class="photo-preview"></div>
+
+          <label>Foto materiale / scatola</label>
+          <input type="file" id="f-material-photos" accept="image/*" capture="environment" multiple>
+          <div id="material-photos-preview" class="photo-preview"></div>
+
+          <button class="btn primary ${S.direction==='IN'?'in':'out'}" id="confirm-btn">Conferma ${S.direction==='IN'?'↓ entrata':'↑ uscita'}</button>
           <div style="height:8px"></div>
           <button class="btn ghost" id="cancel-btn">Annulla</button>
         </div>
@@ -638,8 +833,8 @@
     }
     return `
       <div class="dir-toggle">
-        <button class="${S.direction==='IN'?'active in':''}" data-dir="IN">Entrata</button>
-        <button class="${S.direction==='OUT'?'active out':''}" data-dir="OUT">Uscita</button>
+        <button class="${S.direction==='IN'?'active in':''}" data-dir="IN">↓ Entrata</button>
+        <button class="${S.direction==='OUT'?'active out':''}" data-dir="OUT">↑ Uscita</button>
       </div>
       <div class="card">
         ${S.scanning ? `<div id="reader"></div><div class="scan-hint">QR: inquadra intero. Barcode: tieni il telefono a 10-15cm, ben illuminato, in orizzontale dentro il riquadro</div>
@@ -693,18 +888,64 @@
 
   function moveRowHTML(mv){
     const summary = attrsSummary(mv);
+    const nDdt = (mv.ddtPhotoPaths||[]).length;
+    const nMat = (mv.materialPhotoPaths||[]).length;
+    const photoNote = (nDdt || nMat)
+      ? `<br>\uD83D\uDCCE ${nDdt ? nDdt+' foto DDT' : ''}${nDdt && nMat ? ', ' : ''}${nMat ? nMat+' foto materiale' : ''}`
+      : '';
     return `
       <div class="move-row">
         <div class="info">
           <div class="name">${escapeHTML(mv.name)}</div>
-          <div class="meta">${escapeHTML(mv.categoryName||'')}${summary ? ' - '+escapeHTML(summary) : ''}<br>${mv.code} - ${fmtTime(mv.timestamp)} - ${escapeHTML(mv.operator)}${mv.dest ? ' - '+escapeHTML(mv.dest) : ''}</div>
+          <div class="meta">${escapeHTML(mv.categoryName||'')}${summary ? ' - '+escapeHTML(summary) : ''}<br>${mv.code} - ${fmtTime(mv.timestamp)} - ${escapeHTML(mv.operator)}${mv.dest ? ' - '+escapeHTML(mv.dest) : ''}${photoNote}</div>
         </div>
         <div style="text-align:right;">
-          <span class="badge ${mv.direction==='IN'?'in':'out'}">${mv.direction==='IN'?'Entrata':'Uscita'}</span><br>
+          <span class="badge ${mv.direction==='IN'?'in':'out'}">${mv.direction==='IN'?'↓ Entrata':'↑ Uscita'}</span><br>
           <span class="qty">${mv.direction==='IN'?'+':'-'}${fmtQty(mv.qty, mv.unit)}</span>
         </div>
       </div>
     `;
+  }
+
+  async function exportDDTPhotosZip(){
+    if(!PHOTOS_STORAGE_ENABLED){
+      showToast('Modalit\u00e0 dimostrativa: le foto non sono salvate, quindi non c\u2019\u00e8 nulla da esportare. Abilita Firebase Storage per usare questa funzione.', 'out');
+      return;
+    }
+    if(typeof JSZip === 'undefined'){ showToast('Libreria ZIP non disponibile', 'out'); return; }
+    const withPhotos = S.movements.filter(mv => mv.ddtPhotoPaths && mv.ddtPhotoPaths.length);
+    if(!withPhotos.length){ showToast('Nessuna foto DDT trovata nello storico', 'out'); return; }
+
+    showToast('Preparazione ZIP in corso\u2026 pu\u00f2 richiedere qualche secondo', 'in');
+    const zip = new JSZip();
+    let count = 0, failed = 0;
+
+    for(const mv of withPhotos){
+      const supplierFolder = slug(mv.dest || 'senza-fornitore');
+      const productFolder = slug(mv.name) + '_' + new Date(mv.timestamp).toISOString().slice(0,10);
+      for(const path of mv.ddtPhotoPaths){
+        try{
+          const url = await storage.ref().child(path).getDownloadURL();
+          const resp = await fetch(url);
+          const blob = await resp.blob();
+          const filename = path.split('/').pop();
+          zip.folder(supplierFolder).folder(productFolder).file(filename, blob);
+          count++;
+        }catch(e){ failed++; }
+      }
+    }
+
+    if(!count){ showToast('Impossibile scaricare le foto (verifica CORS su Firebase Storage)', 'out'); return; }
+
+    try{
+      const content = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(content);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'foto-ddt-magazzino.zip';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast(`ZIP creato: ${count} foto` + (failed ? `, ${failed} non scaricate` : ''), 'in');
+    }catch(e){ showToast('Errore nella creazione dello ZIP', 'out'); }
   }
 
   function historyTabHTML(){
@@ -712,6 +953,7 @@
       <div class="card">
         <input type="text" id="hist-filter" placeholder="Cerca per codice, prodotto, categoria, operatore..." value="${escapeAttr(S.filterHistory)}">
         <button class="btn small" id="export-csv">Esporta CSV</button>
+        <button class="btn small" id="export-ddt-zip" style="margin-left:8px;">Esporta foto DDT (ZIP)</button>
       </div>
       <div class="card" id="hist-list"></div>
     `;
@@ -734,6 +976,12 @@
     return `
       <div class="card"><input type="text" id="stock-filter" placeholder="Cerca per prodotto, codice, categoria o sigla (es. FG16OR16)..." value="${escapeAttr(S.filterStock)}"></div>
       <div class="card" id="stock-list"></div>
+      <div class="card">
+        <div class="section-title" style="margin-bottom:8px;">Importa catalogo da CSV</div>
+        <div class="scan-hint" style="text-align:left;margin:0 0 12px;">Colonne: <span class="mono">codice, nome, categoria, unita, attributi, giacenza_iniziale</span> (le ultime due opzionali). Formato attributi: <span class="mono">chiave:valore;chiave:valore</span></div>
+        <input type="file" id="csv-file-input" accept=".csv" style="display:none;">
+        <button class="btn ghost" id="import-csv-btn">Seleziona file CSV</button>
+      </div>
     `;
   }
 
@@ -784,6 +1032,20 @@
           const el = document.getElementById('f-qty');
           el.value = (parseFloat(el.value)||0) + 1;
         };
+        const ddtInput = document.getElementById('f-ddt-photos');
+        if(ddtInput) ddtInput.onchange = (e) => {
+          if(!p.ddtFiles) p.ddtFiles = [];
+          p.ddtFiles.push(...Array.from(e.target.files));
+          renderPhotoPreview('ddt-photos-preview', p.ddtFiles);
+          e.target.value = '';
+        };
+        const materialInput = document.getElementById('f-material-photos');
+        if(materialInput) materialInput.onchange = (e) => {
+          if(!p.materialFiles) p.materialFiles = [];
+          p.materialFiles.push(...Array.from(e.target.files));
+          renderPhotoPreview('material-photos-preview', p.materialFiles);
+          e.target.value = '';
+        };
         if(p.isNewCategory){
           const addBtn = document.getElementById('add-field');
           if(addBtn) addBtn.onclick = () => {
@@ -817,9 +1079,18 @@
       updateHistoryList();
       document.getElementById('hist-filter').oninput = (e) => { S.filterHistory = e.target.value; updateHistoryList(); };
       document.getElementById('export-csv').onclick = exportCSV;
+      document.getElementById('export-ddt-zip').onclick = exportDDTPhotosZip;
     } else if(S.tab === 'stock'){
       updateStockList();
       document.getElementById('stock-filter').oninput = (e) => { S.filterStock = e.target.value; updateStockList(); };
+      const importBtn = document.getElementById('import-csv-btn');
+      if(importBtn) importBtn.onclick = triggerImport;
+      const fileInput = document.getElementById('csv-file-input');
+      if(fileInput) fileInput.onchange = (e) => {
+        const f = e.target.files[0];
+        if(f) handleCSVFile(f);
+        e.target.value = '';
+      };
     }
   }
 
